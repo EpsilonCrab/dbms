@@ -17,6 +17,14 @@ remap_big_let = 0x0410  # Starting number for remapped cyrillic alphabet
 alph_len = big_let_end - big_let_start + 1  # adds the shift from big letters to small
 alph_shift = remap_big_let - big_let_start  # adds the shift from remapped to non-remapped
 
+def to_cyr(instr):  # conversion function
+        out = []  # start with empty output
+        for i in range(0, len(instr)):  # cycle through letters in input string
+            if ord(instr[i]) in range(big_let_start, small_let_end + 1):  # check if the letter is cyrillic
+                out.append(chr(ord(instr[i]) + alph_shift))  # if it is change it and add to output list
+            else:
+                out.append(instr[i])  # if it isn`t don`t change anything and just add it to output list
+        return ''.join(out)  # convert list to string
 
 with dpg.font_registry():
     with dpg.font("NotoMono-Regular.ttf", 20) as font1:
@@ -52,6 +60,9 @@ filter_string_VUZ  = ''
 filter_string_GR_PROJ  = ''
 filter_string_GR_KONK  = ''
 
+edit_input = []
+add_row_input = []
+add_row_id = []
 
 def row_counter():
     result = connection.execute(text("SELECT ROW_NUMBER() OVER (ORDER BY " + k2 +") RowNum FROM " + info[1]))
@@ -60,21 +71,147 @@ def row_counter():
     for i in range(len(eval(info[1].upper()+'_row_num_list')+1)):
         eval(info[1].upper()+'_row_num_list')[i] = eval(info[1].upper()+'_row_num_list')[i][0]
 
+def edit_callback(sender,specs):
+    sender_label = dpg.get_item_label(sender)
+    specs = to_cyr(specs)
+    high_list_copy = []
+    if sender_label in ['g1','codkon','codvuz','g7','g5','g2','g21','g22','g23','g24']:
+        result = re.search(r'' + "[^abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\/#$%&'\"()*+\\\:;<=>?@[\]\^_`{|}~абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ ]*",specs )
+        result = result.group(0)
+        print(result)
+        if len(result) != len(specs):
+            print('Введены недопустимые символы для данного поля')
+            edit_btn()
+            return
 
-def edit_callback(sender):
-    print('hello')
+    for i in range(len(high_list[1])):
+        high_list_copy.append(high_list[1][i])
+
+    for i in range(0,16):
+        if sender_label == GR_PROJ_label_list[i+1]:
+            high_list[1][i]=specs
+    try:
+        connection.execute(text("UPDATE gr_proj SET g1="+ high_list[1][0] +", codkon='" + high_list[1][1] + "', codvuz=" + high_list[1][2] + ", z2='" + high_list[1][3] + 
+        "', g7='" + high_list[1][4] + "', g5=" + high_list[1][5] + ", g2=" + high_list[1][6] + ", g21=" + high_list[1][7] + ", g22=" + high_list[1][8] + ", g23=" + high_list[1][9] + 
+        ", g24=" + high_list[1][10] + ", g6='" + high_list[1][11] + "', g8='" + high_list[1][12] + "', g9='" + high_list[1][13] + "', g10='" + high_list[1][14] + "', g11='" + high_list[1][15]+
+        "' WHERE g1="+ high_list_copy[0] +" AND codkon='" + high_list_copy[1] + "' AND codvuz=" + high_list_copy[2] + " AND z2='" + high_list_copy[3] + 
+        "' AND g7='" + high_list_copy[4] + "' AND g5=" + high_list_copy[5] + " AND g2=" + high_list_copy[6] + " AND g21=" + high_list_copy[7] + " AND g22=" + high_list_copy[8] + " AND g23=" + high_list_copy[9] + 
+        " AND g24=" + high_list_copy[10] + " AND g6='" + high_list_copy[11] + "' AND g8='" + high_list_copy[12] + "' AND g9='" + high_list_copy[13] + "' AND g10='" + high_list_copy[14] + "' AND g11='" + high_list_copy[15]+"'"))
+    except:
+        print()
+        print("Нельзя выполнить SQL запрос")
+        
+        for i in range(16):
+            high_list[1][i] = high_list_copy[i]
+        edit_btn()
+        return
+    connection.execute(text("COMMIT"))
+    dpg.delete_item(table_name_id[1][0], children_only=True)
+    exec("for _label in " + "GR_PROJ" + "_label_list: dpg.add_table_column(parent = table_name_id[1][0],label=_label)")
+    result = connection.execute(text("SELECT * FROM gr_proj"))
+    counter = 0
+    for _row in result:
+        with dpg.table_row(parent = table_name_id[1][0]):
+            for j in range(-1,len(_row)):
+                if (j==-1):
+                    dpg.add_selectable(height = 27, width = 27, callback = highlight_rows, user_data = 18)
+                    if(counter==high_list[0][1]):
+                        high_list[0][0] = dpg.last_item()
+                        dpg.highlight_table_row(table = high_list[0][2], row = high_list[0][1], color = (0,0,100))
+                        dpg.set_value(dpg.last_item(), True)
+                else:
+                    dpg.add_text(f"{_row[j]}")
+        counter+=1
     
+def delete_callback():
+    try:
+        connection.execute(text("DELETE FROM gr_proj " + "WHERE g1="+ high_list[1][0] +" AND codkon='" + high_list[1][1] + "' AND codvuz=" + high_list[1][2] + " AND z2='" + high_list[1][3] + 
+        "' AND g7='" + high_list[1][4] + "' AND g5=" + high_list[1][5] + " AND g2=" + high_list[1][6] + " AND g21=" + high_list[1][7] + " AND g22=" + high_list[1][8] + " AND g23=" + high_list[1][9] + 
+        " AND g24=" + high_list[1][10] + " AND g6='" + high_list[1][11] + "' AND g8='" + high_list[1][12] + "' AND g9='" + high_list[1][13] + "' AND g10='" + high_list[1][14] + "' AND g11='" + high_list[1][15]+"'"))
+        high_list.clear()
+    except:
+        print("Неверный SQL запрос")
+        return
+    connection.execute(text("COMMIT"))
+    dpg.delete_item(table_name_id[1][0], children_only=True)
+    exec("for _label in " + "GR_PROJ" + "_label_list: dpg.add_table_column(parent = table_name_id[1][0],label=_label)")
+    result = connection.execute(text("SELECT * FROM gr_proj"))
+    for _row in result:
+        with dpg.table_row(parent = table_name_id[1][0]):
+            for j in range(-1,len(_row)):
+                if (j==-1):
+                    dpg.add_selectable(height = 27, width = 27, callback = highlight_rows, user_data = 18)
+                else:
+                    dpg.add_text(f"{_row[j]}")
+    dpg.hide_item("DELETE")
 
+def sorter(info):
+    return info[0]
 
-def to_cyr(instr):  # conversion function
-        out = []  # start with empty output
-        for i in range(0, len(instr)):  # cycle through letters in input string
-            if ord(instr[i]) in range(big_let_start, small_let_end + 1):  # check if the letter is cyrillic
-                out.append(chr(ord(instr[i]) + alph_shift))  # if it is change it and add to output list
-            else:
-                out.append(instr[i])  # if it isn`t don`t change anything and just add it to output list
-        return ''.join(out)  # convert list to string
+def add_row_callback():
+    if(len(add_row_input)<16):
+        print('Введите все значения в поля')
+        return
+    add_row_input.sort(key = sorter)
+    add_row_string = ''
+    for i in range(16):
+        if i !=15 and i not in [1,3,4,11,12,13,14,15]:
+            add_row_string += add_row_input[i][1]+', '
+        elif i !=15 and i in [1,3,4,11,12,13,14,15]:
+            add_row_string += "'" + add_row_input[i][1] + "'" + ', '
+        else:
+            add_row_string += "'" + add_row_input[i][1] + "'"
+        
+    print(add_row_string)
+    try:
+        connection.execute(text("INSERT INTO gr_proj (g1,codkon,codvuz,z2,g7,g5,g2,g21,g22,g23,g24,g6,g8,g9,g10,g11) VALUES (" + add_row_string + ")"))
+    except:
+        print('Неверный SQL запрос')
+        return
 
+    add_row_input.clear()
+    connection.execute(text('COMMIT'))
+    dpg.delete_item(table_name_id[1][0], children_only=True)
+    exec("for _label in " + "GR_PROJ" + "_label_list: dpg.add_table_column(parent = table_name_id[1][0],label=_label)")
+    result = connection.execute(text("SELECT * FROM gr_proj"))
+    for _row in result:
+        with dpg.table_row(parent = table_name_id[1][0]):
+            for j in range(-1,len(_row)):
+                if (j==-1):
+                    dpg.add_selectable(height = 27, width = 27, callback = highlight_rows, user_data = 18)
+                else:
+                    dpg.add_text(f"{_row[j]}")
+
+def clear_add_row():
+    for i in range(16):
+        dpg.delete_item(add_row_id[i])
+    add_row_id.clear()
+    for i in range(16):
+        add_row_id_1 = dpg.add_input_text(parent = 'ADD_ROW', label = GR_PROJ_label_list[i+1], callback = add_row_text_input, on_enter=True)
+        add_row_id.append(add_row_id_1)
+    add_row_input.clear()
+
+def add_row_text_input(sender,specs):
+    sender_label = dpg.get_item_label(sender)
+    specs = to_cyr(specs)
+    if sender_label in ['g1','codkon','codvuz','g7','g5','g2','g21','g22','g23','g24']:
+        result = re.search(r'' + "[^abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\/#$%&'\"()*+\\\:;<=>?@[\]\^_`{|}~абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ ]*",specs )
+        result = result.group(0)
+        print(result)
+        if len(result) != len(specs):
+            print('Введены недопустимые символы для данного поля')
+            return
+    for i in range(1,len(GR_PROJ_label_list)):
+        if sender_label == GR_PROJ_label_list[i]:
+            for j in range(len(add_row_input)):
+                if i-1 == add_row_input[j][0]:
+                    add_row_input[j][1] = specs
+            if [i-1,specs] not in add_row_input:
+                add_row_input.append([i-1,specs])
+
+def delete_no_callback(sender):
+    _window = dpg.get_item_parent(sender)
+    dpg.hide_item(_window)
 
 def table_creation(info):
     result = connection.execute(text("SELECT * FROM " + info[0]))
@@ -88,16 +225,17 @@ def table_creation(info):
 
 def highlight_rows(sender, specs, user_data):
     _row = dpg.get_item_parent(sender)
-    print(_row)
     _table = dpg.get_item_parent(_row)
     first_row = dpg.get_item_children(_table, 1)[0]
-    print(first_row)
     _row_ = int((_row-first_row)/user_data)
-    print(_row_)
+    cols = []
+    for a in range(2,user_data):
+        cols.append(dpg.get_value(_row+a))
     if(specs):
         if(len(high_list)==0):
             dpg.highlight_table_row(table = _table, row = _row_, color = (0,0,100))
             high_list.append([sender,_row_,_table])
+            high_list.append(cols)
             print(high_list)
         else:
             dpg.unhighlight_table_row(table = high_list[0][2], row = high_list[0][1])
@@ -105,11 +243,14 @@ def highlight_rows(sender, specs, user_data):
             high_list.clear()
             dpg.highlight_table_row(table = _table, row = _row_, color = (0,0,100))
             high_list.append([sender,_row_,_table])
+            high_list.append(cols)
             print(high_list)
     else:
         dpg.unhighlight_table_row(table = _table, row = _row_)
         high_list.clear()
         print(high_list)
+
+    edit_btn()
 
 def sort_algo(col_id, s_dir, row, sender, ran):
     if(dpg.get_item_label(sender) == 'gr_konk'):
@@ -225,7 +366,6 @@ def gr_konk_viz(sender):
 def gr_proj_viz(sender):
     dpg.show_item('GR_PROJ')
 
-
 def closing_filter_window(sender):
     dpg.delete_item('filter_combo_input')
 
@@ -286,8 +426,8 @@ def combo_win_select(sender, specs):
     combo_id_mas.clear()
     print(specs)
     if(not dpg.does_item_exist('filter_combo_input')):
-        with dpg.window(tag = 'filter_combo_input', width = 300, height = 200, no_title_bar = True, no_resize = True):
-            dpg.set_item_pos('filter_combo_input', (25, 450))
+        with dpg.window(tag = 'filter_combo_input', width = 250, height = 200, no_title_bar = True, no_resize = True):
+            dpg.set_item_pos('filter_combo_input', (45, 380))
             dpg.add_button(label = 'Сброс фильтра', callback = reset_filter, user_data = specs)
             for i in table_list_name_size:
                     if (specs == i[0]):
@@ -304,8 +444,8 @@ def combo_win_select(sender, specs):
                             filter_mas_1.clear()
     else:
         dpg.delete_item('filter_combo_input')
-        with dpg.window(tag = 'filter_combo_input', width = 300, height = 200, no_title_bar = True, no_resize = True):
-            dpg.set_item_pos('filter_combo_input', (25, 450))
+        with dpg.window(tag = 'filter_combo_input', width = 250, height = 200, no_title_bar = True, no_resize = True):
+            dpg.set_item_pos('filter_combo_input', (45, 380))
             dpg.add_button(label = 'Сброс фильтра', callback = reset_filter, user_data = specs)
             for i in table_list_name_size:
                     if (specs == i[0]):
@@ -372,7 +512,6 @@ def filtering(sender,specs, user_data):
     else:
         info = table_list_name_size[2]
     
-
     for i in table_list_name_size:
         if (user_data[0] == i[0]):
             for j in range(i[1]):
@@ -393,7 +532,6 @@ def filtering(sender,specs, user_data):
                     dpg.disable_item(combo_id_mas[j])
                 filter_mas_1.clear()
     
-
     if(len(specs_filter_list)==0):
         for i in table_name_id:
             if i[1] == user_data[0]:
@@ -425,45 +563,85 @@ def filtering(sender,specs, user_data):
 
 def filter_btn(sender):
     if(not dpg.does_item_exist('FILTER')):
-        with dpg.window(tag = 'FILTER', label = "Фильтр", width = 350, height = 300, on_close = closing_filter_window):
-            dpg.set_item_pos('FILTER', (25, 350))
+        with dpg.window(tag = 'FILTER', label = "Фильтр", width = 300, height = 300, on_close = closing_filter_window):
+            dpg.set_item_pos('FILTER', (30, 300))
             combo = dpg.add_combo(items = ("gr_konk","gr_proj","vuz"), callback = combo_win_select)
     dpg.show_item('FILTER')
 
 def delete_btn(sender):
     if(not dpg.does_item_exist('DELETE')):
-        with dpg.window(tag = 'DELETE', label = "Удаление", width = 200, height = 200, modal = True):
-            dpg.add_input_text()
+        with dpg.window(tag = 'DELETE', label = "Удаление", width = 300, height = 200, modal = True, pos = (35,50)):
+            if len(high_list)!=0:
+                dpg.add_text("Удалить выделенную строку?")
+                dpg.add_button(label = "Да", callback = delete_callback)
+                dpg.add_button(label = "Нет", callback = delete_no_callback)
+                dpg.add_button(label = "Отмена", callback = delete_no_callback)
+            else:
+                dpg.add_text("Выберите строку для удаления")
+    else:
+        dpg.delete_item('DELETE')
+        with dpg.window(tag = 'DELETE', label = "Удаление", width = 300, height = 200, modal = True, pos = (35,50)):
+            if len(high_list)!=0:
+                dpg.add_text("Удалить выделенную строку?")
+                dpg.add_button(label = "Да", callback = delete_callback)
+                dpg.add_button(label = "Нет", callback = delete_no_callback)
+                dpg.add_button(label = "Отмена", callback = delete_no_callback)
+            else:
+                dpg.add_text("Выберите строку для удаления")
     dpg.show_item('DELETE')
 
-def edit_btn(sender):
+def edit_btn():
     if(not dpg.does_item_exist('EDIT')):
-        with dpg.window(tag = 'EDIT', label = "Редактирование", width = 400, height = 400):
-            dpg.add_text()
+        if(not len(high_list)):
+            with dpg.window(tag = 'EDIT', label = "Редактирование", width = 300, height = 400, pos = (30,250)):
+                dpg.add_text('Выберите строку для редактирования', tag = 'choose_row')
+        else:
+            with dpg.window(tag = 'EDIT', label = "Редактирование", width = 300, height = 400, pos = (30,250)):
+                dpg.delete_item('choose_row')
+                dpg.add_text('Редактировать строку')
+                for i in range(16):
+                    dpg.add_input_text(label = GR_PROJ_label_list[i+1], default_value = high_list[1][i], on_enter = True, callback = edit_callback)
+                    edit_input.append(dpg.last_item())
+    else:
+        if(dpg.does_item_exist('choose_row')):
+            dpg.delete_item('choose_row')
+        for x in edit_input:
+            dpg.delete_item(x)
+        edit_input.clear()
+        if(len(high_list)):
             for i in range(16):
-                dpg.add_input_text(label = GR_PROJ_label_list[i+1])
-
+                dpg.add_input_text(parent = 'EDIT', label = GR_PROJ_label_list[i+1], default_value = high_list[1][i], on_enter = True, callback = edit_callback)
+                edit_input.append(dpg.last_item())
+        else:
+            dpg.add_text('Выберите строку для редактирования', tag = 'choose_row', parent = 'EDIT')
     dpg.show_item('EDIT')
 
 def add_row_btn(sender):
     if(not dpg.does_item_exist('ADD_ROW')):
-        with dpg.window(tag = 'ADD_ROW', label = "Добавить строку", width = 200, height = 200, modal = True):
-            dpg.add_input_text()
+        with dpg.window(tag = 'ADD_ROW', label = "Добавить строку", width = 400, height = 500, pos = (35,50)):
+            dpg.add_button(parent ='ADD_ROW',callback = add_row_callback, label = "Добавить строку в конец")
+            dpg.add_button(parent ='ADD_ROW', label = "Сброс ввода", callback = clear_add_row)
+            for i in range(16):
+                add_row_id_1 = dpg.add_input_text(parent = 'ADD_ROW', label = GR_PROJ_label_list[i+1], callback = add_row_text_input, on_enter=True)
+                add_row_id.append(add_row_id_1)
+            
     dpg.show_item('ADD_ROW')
 
+"""
 def add_copy_btn(sender):
     if(not dpg.does_item_exist('COPY')):
         with dpg.window(tag = 'COPY', label = "Скопировать выделенное", width = 200, height = 200, modal = True):
             dpg.add_input_text()
     dpg.show_item('COPY')
+"""
 
 def inst_window(sender):
     with dpg.window(tag = 'INS', label = "Инструменты", width = 200, height = 200, on_close = closing_inst_window):
-        dpg.set_item_pos("INS",(25,50))
+        dpg.set_item_pos("INS",(30,45))
         dpg.add_button(label = 'Фильтр', callback = filter_btn)
         dpg.add_button(label = 'Удалить', callback =  delete_btn)
         dpg.add_button(label = 'Редактировать', callback = edit_btn)
-        dpg.add_button(label = 'Копировать', callback = add_copy_btn)
+        #dpg.add_button(label = 'Копировать', callback = add_copy_btn)
         dpg.add_button(label = 'Добавить в конец', callback = add_row_btn)
         
 
@@ -471,11 +649,11 @@ with dpg.window(tag = 'Main Window', height = 720, width = 1280):
     dpg.set_primary_window("Main Window", True)
     with dpg.viewport_menu_bar():
         with dpg.menu(label="Таблицы"):
-            dpg.add_menu_item(label="gr_konk" , callback = gr_konk_viz)
-            dpg.add_menu_item(label="gr_proj", callback = gr_proj_viz)
-            dpg.add_menu_item(label="vuz", callback = vuz_viz)
-        with dpg.menu(label="Экспорт"):
-            dpg.add_menu_item(label="Экспорт в файл")
+            dpg.add_menu_item(label='Конкурсы' , callback = gr_konk_viz)
+            dpg.add_menu_item(label='Проекты', callback = gr_proj_viz)
+            dpg.add_menu_item(label='ВУЗы', callback = vuz_viz)
+        #with dpg.menu(label="Экспорт"):
+        #   dpg.add_menu_item(label="Экспорт в файл")
         with dpg.menu(label="Инструменты"):
             dpg.add_menu_item(label="Для работы с таблицами", callback = inst_window)
         for i in window_specs:
@@ -491,7 +669,7 @@ with dpg.window(tag = 'Main Window', height = 720, width = 1280):
 
                     table_creation(table_list_name_size[i[1]])
 
-dpg.create_viewport(title='Custom Title')
+dpg.create_viewport(title='Support of competitions for grants')
 dpg.setup_dearpygui()
 dpg.show_viewport()
 dpg.start_dearpygui()
