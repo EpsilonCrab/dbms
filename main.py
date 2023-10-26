@@ -406,7 +406,7 @@ def reset_filter(sender, specs,user_data):
                         filter_mas_1.append([str(x) for x in row])
                     for c in range(len(filter_mas_1)):
                         filter_mas_1[c] = filter_mas_1[c][0]
-                    combo = dpg.add_combo(parent = 'filter_combo_input', label = eval(i[0].upper() + '_label_list_ru[j+1]') , callback = filtering,
+                    combo = dpg.add_combo(parent = 'filter_combo_input', label = eval(i[0].upper() + '_label_list[j+1]') , callback = filtering,
                                                                 user_data = [user_data,eval("filter_string_" + i[0].upper())], items = filter_mas_1)
                     combo_id_mas.append(combo)
                     filter_mas_1.clear()
@@ -533,7 +533,7 @@ def filtering(sender,specs, user_data):
                         a+=1
                 if a == len(specs_filter_list):
                     dpg.delete_item(combo_id_mas[j])
-                    combo_id_mas[j] = dpg.add_combo(parent = 'filter_combo_input', label = eval(i[0].upper() + '_label_list_ru[j+1]') , callback = filtering,
+                    combo_id_mas[j] = dpg.add_combo(parent = 'filter_combo_input', label = eval(i[0].upper() + '_label_list[j+1]') , callback = filtering,
                                                                 user_data = [user_data[0],eval("filter_string_" + i[0].upper())], items = filter_mas_1)
                 else:
                     dpg.disable_item(combo_id_mas[j])
