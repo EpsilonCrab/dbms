@@ -4,6 +4,7 @@ import sqlalchemy as sql
 import re
 import psycopg2 
 import dearpygui.demo as demo
+import openpyxl as op
 
 engine = sql.create_engine('postgresql://postgres:1111@localhost:5432/postgres',echo=True)
 connection = engine.connect()
@@ -208,6 +209,7 @@ first_grnti_input = 0
 first_grnti_edit = 0
 add_row_max_g1 = 0
 grnti_edit_defaults = []
+filter_condition = False
 
 def court_to_string(mas, result):
     for row in result:
@@ -354,12 +356,12 @@ def edit_row_window_input_creation():
                 dpg.add_text(parent ='EDIT', pos = (198,130), default_value = ',')
 
                 dpg.add_input_int(parent ='EDIT',width = 60, pos = (206,124), callback = edit_grnti_input, default_value = int(grnti_edit_defaults[3][1]),
-                                                    min_value = 0, max_value = 99, min_clamped = True, max_clamped = True, step = 0)
+                                                    min_value = -1, max_value = 99, min_clamped = True, max_clamped = True, step = 0)
                 edit_id_input.append(dpg.last_item())
                 dpg.add_text(parent ='EDIT', pos = (264,130), default_value = '.')
 
                 dpg.add_input_int(parent ='EDIT',width = 60, pos = (272,124), callback = edit_grnti_input, default_value = int(grnti_edit_defaults[4][1]),
-                                                    min_value = 0, max_value = 99, min_clamped = True, max_clamped = True, step = 0)
+                                                    min_value = -1, max_value = 99, min_clamped = True, max_clamped = True, step = 0)
                 edit_id_input.append(dpg.last_item())
                 dpg.add_text(parent ='EDIT', pos = (330,130), default_value = '.')
 
@@ -542,6 +544,7 @@ def highlight_rows(sender, specs, user_data):
             dpg.unhighlight_table_row(table = high_list[0][2], row = high_list[0][1])
             dpg.set_value(high_list[0][0],False)
             high_list.clear()
+            high_list_copy.clear()
             dpg.highlight_table_row(table = _table, row = _row_, color = (0,0,100))
             high_list.append([sender,_row_,_table])
             high_list.append(cols)
@@ -549,6 +552,7 @@ def highlight_rows(sender, specs, user_data):
     else:
         dpg.unhighlight_table_row(table = _table, row = _row_)
         high_list.clear()
+        high_list_copy.clear()
     for i in high_list[1]:
         high_list_copy.append(i)
     print(high_list_copy)
@@ -673,6 +677,8 @@ def reset_filter(sender, specs,user_data):
         combo = dpg.add_combo(parent = 'FILTER', label = j, callback = filtering, items = filter_mas_1, user_data = [i,filter_string])
         combo_id_mas.append([i,combo])
         filter_mas_1.clear()
+    global filter_condition
+    filter_condition = False
     gr_proj_table_recreation()
 
 def set_filter_callback():
@@ -681,6 +687,8 @@ def set_filter_callback():
     dpg.delete_item(table_name_id[1][0], children_only=True)
     exec("for _label in " + "GR_PROJ" + "_label_list_ru: dpg.add_table_column(parent = table_name_id[1][0],label=_label)")
     result = connection.execute(text("SELECT codkon,g1,g8,g7,z2,g5,g2,g21,g22,g23,g24,codvuz,g6,g9,g10,g11 FROM gr_proj WHERE z2 IN (SELECT z2 FROM vuz WHERE " + new_formed_filter_string+ " )"))
+    global filter_condition
+    filter_condition = True
     for _row in result:
         with dpg.table_row(parent = table_name_id[1][0]):
             for j in range(-1,len(_row)):
@@ -761,6 +769,7 @@ def filtering(sender,specs, user_data):
 
     global new_formed_filter_string
     new_formed_filter_string = user_data[1]
+    print(new_formed_filter_string)
 
 def filter_btn(sender):
     specs_filter_list.clear()
@@ -1088,8 +1097,356 @@ def add_row_btn(sender):
                 dpg.add_button(label = "Добавить строку", callback = add_row_callback, pos =(128,20), height = 50)
                 dpg.add_button(label = "Сброс ввода", callback = clear_add_row, pos = (368,20),  height = 50)
                 dpg.add_button(label = "Выход", callback = hide_add_row_input, pos = (608,20), height = 50 )
-            
     dpg.show_item('ADD_ROW')
+
+def export_callback():
+    excel_doc = op.Workbook()
+    excel_doc.create_sheet(title = 'Лист1', index = 0)
+    excel_doc.create_sheet(title = 'Лист2', index = 1)
+    excel_doc.create_sheet(title = 'Лист3', index = 2)
+    sheetnames = excel_doc.sheetnames
+    sheet = excel_doc[sheetnames[0]]
+    sheet[f'A{1}'] = 'Номер' 
+    sheet[f'B{1}'] = 'ВУЗ'
+    sheet[f'C{1}'] = 'Кол-во НИР' 
+    sheet[f'D{1}'] = 'Плановое финансирование' 
+    sheet[f'E{1}'] = 'Кол-во конкурсов по грантам' 
+    i=2
+    global filter_condition
+    global new_formed_filter_string
+    if filter_condition:
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY gp.z2 ASC), gp.z2, COUNT(g1), SUM(g5), COUNT(DISTINCT gp.codkon) 
+                                                FROM gr_proj gp
+                                                INNER JOIN gr_konk gk  ON gk.codkon = gp.codkon
+                                                INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                                + filter_with_where + 
+                                                """GROUP BY gp.z2"""))
+
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY gp.z2 ASC), gp.z2, COUNT(g1), SUM(g5), COUNT(DISTINCT gp.codkon) 
+                                            FROM gr_proj gp
+                                            INNER JOIN gr_konk gk  ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            GROUP BY gp.z2"""))
+
+    for row in result:
+        a,b,c,d,e = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        sheet[f'D{i}'] = d 
+        sheet[f'E{i}'] = e 
+        i+=1
+
+    if filter_condition:
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where))
+    else:
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            """))
+    for row in result:
+        a,b,c,d,e = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        sheet[f'D{i}'] = d 
+        sheet[f'E{i}'] = e 
+
+
+    sheet = excel_doc[sheetnames[1]]
+    sheet[f'A{1}'] = 'Номер' 
+    sheet[f'B{1}'] = 'Название конкурса'
+    sheet[f'C{1}'] = 'Кол-во НИР' 
+    sheet[f'D{1}'] = 'Плановое финансирование' 
+    sheet[f'E{1}'] = 'Кол-во ВУЗов' 
+
+    i=2
+    if filter_condition:
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY npr DESC), k2, COUNT(gp.g1), SUM(gp.g5), COUNT(DISTINCT gp.z2)   
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where + 
+                                            """GROUP BY gp.codkon, k2, npr, k12"""))
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY npr DESC), k2, COUNT(gp.g1), SUM(gp.g5), COUNT(DISTINCT gp.z2)   
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            GROUP BY gp.codkon, k2, npr, k12"""))
+    
+    for row in result:
+        a,b,c,d,e = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        sheet[f'D{i}'] = d 
+        sheet[f'E{i}'] = e 
+        i+=1
+
+    if filter_condition:
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where))
+    else:
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            """))
+    for row in result:
+        a,b,c,d,e = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        sheet[f'D{i}'] = d 
+        sheet[f'E{i}'] = e
+
+    sheet = excel_doc[sheetnames[2]]
+    sheet[f'A{1}'] = 'Номер' 
+    sheet[f'B{1}'] = 'Название субъекта'
+    sheet[f'C{1}'] = 'Кол-во НИР' 
+    sheet[f'D{1}'] = 'Плановое финансирование'
+    sheet[f'E{1}'] = 'Кол-во конкурсов в субъекте'
+    sheet[f'F{1}'] = 'Кол-во ВУЗов в субъекте'
+
+    i=2
+    if filter_condition:
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY oblname ASC), 
+                                            oblname,
+                                            COUNT(gp.g1),
+                                            (SUM(gp.g5)),
+                                            COUNT(DISTINCT vz.codvuz),
+                                            COUNT(DISTINCT gp.codkon)
+                                            FROM vuz vz 
+                                            INNER JOIN gr_proj gp ON vz.codvuz=gp.codvuz
+                                            INNER JOIN gr_konk gk ON gk.codkon = gp.codkon"""
+                                            + filter_with_where +
+                                            """GROUP BY oblname"""))
+
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY oblname ASC), 
+                                            oblname,
+                                            COUNT(gp.g1),
+                                            (SUM(gp.g5)),
+                                            COUNT(DISTINCT vz.codvuz),
+                                            COUNT(DISTINCT gp.codkon)
+                                            FROM vuz vz 
+                                            INNER JOIN gr_proj gp ON vz.codvuz=gp.codvuz
+                                            INNER JOIN gr_konk gk ON gk.codkon = gp.codkon
+                                            GROUP BY oblname"""))
+    for row in result:
+        a,b,c,d,e,f = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        sheet[f'D{i}'] = d 
+        sheet[f'E{i}'] = e
+        sheet[f'F{i}'] = f 
+        i+=1
+
+    excel_doc.save('ANALYS.xlsx')
+
+def hide_ex_viz_vuz():
+    dpg.hide_item('EXPORT_VUZ')
+    dpg.delete_item('EXPORT_VUZ')
+
+def hide_ex_viz_konk():
+    dpg.hide_item('EXPORT_KONK')
+    dpg.delete_item('EXPORT_KONK')
+
+def hide_ex_viz_fed():
+    dpg.hide_item('EXPORT_FED')
+    dpg.delete_item('EXPORT_FED')
+
+def ex_vuz_creation(a):
+    if a: 
+        global new_formed_filter_string
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY gp.z2 ASC), gp.z2, COUNT(g1), SUM(g5), COUNT(DISTINCT gp.codkon) 
+                                            FROM gr_proj gp
+                                            INNER JOIN gr_konk gk  ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where + 
+                                            """GROUP BY gp.z2"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY gp.z2 ASC), gp.z2, COUNT(g1), SUM(g5), COUNT(DISTINCT gp.codkon) 
+                                            FROM gr_proj gp
+                                            INNER JOIN gr_konk gk  ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            GROUP BY gp.z2"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+
+def ex_konk_creation(a):
+    if a: 
+        global new_formed_filter_string
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY npr DESC), k2, COUNT(gp.g1), SUM(gp.g5), COUNT(DISTINCT gp.z2)   
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where + 
+                                            """GROUP BY gp.codkon, k2, npr, k12"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY npr DESC), k2, COUNT(gp.g1), SUM(gp.g5), COUNT(DISTINCT gp.z2)   
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            GROUP BY gp.codkon, k2, npr, k12"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+
+def ex_fed_creation(a):
+    if a: 
+        global new_formed_filter_string
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY oblname ASC), 
+                                            oblname,
+                                            COUNT(gp.g1),
+                                            (SUM(gp.g5)),
+                                            COUNT(DISTINCT vz.codvuz),
+                                            COUNT(DISTINCT gp.codkon)
+                                            FROM vuz vz 
+                                            INNER JOIN gr_proj gp ON vz.codvuz=gp.codvuz
+                                            INNER JOIN gr_konk gk ON gk.codkon = gp.codkon"""
+                                            + filter_with_where +
+                                            """GROUP BY oblname"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+        end_row = [' ','Итого:', ]
+
+    else:
+        result = connection.execute(text("""SELECT ROW_NUMBER() OVER (ORDER BY oblname ASC), 
+                                            oblname,
+                                            COUNT(gp.g1),
+                                            (SUM(gp.g5)),
+                                            COUNT(DISTINCT vz.codvuz),
+                                            COUNT(DISTINCT gp.codkon)
+                                            FROM vuz vz 
+                                            INNER JOIN gr_proj gp ON vz.codvuz=gp.codvuz
+                                            INNER JOIN gr_konk gk ON gk.codkon = gp.codkon
+                                            GROUP BY oblname"""))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+
+
+def ex_end(a):
+    if a:
+        global new_formed_filter_string
+        filter_with_where = ' WHERE ' + new_formed_filter_string
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz"""
+                                            + filter_with_where))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+    else:
+        result = connection.execute(text("""SELECT ' ','ИТОГО', COUNT(gp.g1), SUM(gp.g5), ' '
+                                            FROM gr_konk gk 
+                                            INNER JOIN gr_proj gp ON gk.codkon = gp.codkon
+                                            INNER JOIN vuz vz ON vz.codvuz=gp.codvuz
+                                            """))
+        for row in result:
+            with dpg.table_row():
+                for j in range(len(row)):
+                        dpg.add_text(f"{row[j]}")
+
+
+def ex_viz_vuz():
+    if(not dpg.does_item_exist('EXPORT_VUZ')):
+        with dpg.window(tag = 'EXPORT_VUZ', label = "Анализ ВУЗов", width = 900, height = 600, pos = (35,50)):
+            with dpg.table(height = 450, label = 'По ВУЗам', header_row=True,
+                        borders_innerH=True, borders_outerH=True, borders_innerV=True,
+                        borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
+                        policy = dpg.mvTable_SizingFixedFit, sortable = False):
+                dpg.add_table_column(label = 'Номер')
+                dpg.add_table_column(label = 'ВУЗ')
+                dpg.add_table_column(label = 'Кол-во НИР')
+                dpg.add_table_column(label = 'Плановое финансирование')
+                dpg.add_table_column(label = 'Количество конкурсов грантов')
+                ex_vuz_creation(filter_condition)
+                ex_end(filter_condition)
+            with dpg.child_window(pos = (8,500),autosize_x=True, autosize_y=False):
+                dpg.add_button(label = "Экспорт в файл", callback = export_callback, pos =(128,20), height = 50)
+                dpg.add_button(label = "Выход", callback = hide_ex_viz_vuz, pos = (608,20), height = 50)
+
+    dpg.show_item('EXPORT_VUZ')
+
+
+def ex_viz_konk():
+    if(not dpg.does_item_exist('EXPORT_KONK')):
+        with dpg.window(tag = 'EXPORT_KONK', label = "Анализ конкурсов", width = 900, height = 600, pos = (35,50)):
+            with dpg.table(height = 450, label = 'По конкурсам', header_row=True,
+                    borders_innerH=True, borders_outerH=True, borders_innerV=True,
+                    borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
+                    policy = dpg.mvTable_SizingFixedFit, sortable = False):
+                dpg.add_table_column(label = 'Номер')
+                dpg.add_table_column(label = 'Название конкурса')
+                dpg.add_table_column(label = 'Кол-во НИР')
+                dpg.add_table_column(label = 'Плановое финансирование')
+                dpg.add_table_column(label = 'Количество ВУЗов')
+                ex_konk_creation(filter_condition)
+                ex_end(filter_condition)
+            with dpg.child_window(pos = (8,500),autosize_x=True, autosize_y=False):
+                dpg.add_button(label = "Экспорт в файл", callback = export_callback, pos =(128,20), height = 50)
+                dpg.add_button(label = "Выход", callback = hide_ex_viz_konk, pos = (608,20), height = 50)
+
+    dpg.show_item('EXPORT_KONK')
+
+
+def ex_viz_fed():
+    if(not dpg.does_item_exist('EXPORT_FED')):
+        with dpg.window(tag = 'EXPORT_FED', label = "Анализ субъектов федерации", width = 900, height = 600, pos = (35,50)):
+            with dpg.table(height = 450, label = 'По субъектам федерации', header_row=True,
+                    borders_innerH=True, borders_outerH=True, borders_innerV=True,
+                    borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
+                    policy = dpg.mvTable_SizingFixedFit, sortable = False):
+                dpg.add_table_column(label = 'Номер')
+                dpg.add_table_column(label = 'Название субъекта')
+                dpg.add_table_column(label = 'Кол-во НИР')
+                dpg.add_table_column(label = 'Плановое финансирование')
+                dpg.add_table_column(label = 'Кол-во ВУЗов в субъекте')
+                dpg.add_table_column(label = 'Кол-во конкурсов в субъекте')
+                ex_fed_creation(filter_condition)
+            with dpg.child_window(pos = (8,500),autosize_x=True, autosize_y=False):
+                dpg.add_button(label = "Экспорт в файл", callback = export_callback, pos =(128,20), height = 50)
+                dpg.add_button(label = "Выход", callback = hide_ex_viz_fed, pos = (608,20), height = 50)
+
+    dpg.show_item('EXPORT_FED')
+
 
 with dpg.window(tag = 'Main Window', height = 720, width = 1280):
     dpg.set_primary_window("Main Window", True)
@@ -1098,6 +1455,10 @@ with dpg.window(tag = 'Main Window', height = 720, width = 1280):
             dpg.add_menu_item(label='Конкурсы' , callback = gr_konk_viz)
             dpg.add_menu_item(label='Проекты', callback = gr_proj_viz)
             dpg.add_menu_item(label='ВУЗы', callback = vuz_viz)
+        with dpg.menu(label="Анализ"):
+            dpg.add_menu_item(label="Анализ по ВУЗам", callback = ex_viz_vuz)
+            dpg.add_menu_item(label="Анализ по конкурсам", callback = ex_viz_konk)
+            dpg.add_menu_item(label="Анализ по субъектам фед.", callback = ex_viz_fed)
         for i in window_specs:
             with dpg.window(tag = i[0], label  = i[0], width = 1200, height = 950, show = False, no_resize = True):
                 dpg.set_item_pos(i[0],(400,50))
