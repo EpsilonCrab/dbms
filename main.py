@@ -105,7 +105,8 @@ $$ LANGUAGE plpgsql;
 connection.execute(text(
 """
 CREATE OR REPLACE TRIGGER gr_konk_financing
-AFTER INSERT OR DELETE OR UPDATE ON gr_proj
+AFTER INSERT OR DELETE OR UPDATE OF g5
+ON gr_proj
 FOR EACH ROW
 EXECUTE PROCEDURE planed_financing();
 """
@@ -132,11 +133,118 @@ $$ LANGUAGE plpgsql;
 connection.execute(text(
 """
 CREATE OR REPLACE TRIGGER gr_konk_npr
-AFTER INSERT OR DELETE OR UPDATE ON gr_proj
+AFTER INSERT OR DELETE  
+ON gr_proj
 FOR EACH ROW
 EXECUTE PROCEDURE konk_participants();
 """
 ))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION gr_proj_kv_financing(
+    column_name TEXT,
+    portion INTEGER
+)
+RETURNS VOID AS $$
+BEGIN
+    EXECUTE format('UPDATE gr_proj SET %I = %I + %L', column_name,column_name,portion);
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION gr_konk_actual_financing()
+RETURNS void AS $$
+BEGIN
+    UPDATE gr_konk SET k4 = k41 + k42 + k43 + k44;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION kv1()
+RETURNS void AS $$
+DECLARE 
+array_str text [] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'];
+i text;
+BEGIN
+    FOREACH i IN ARRAY array_str
+        LOOP
+            UPDATE gr_konk SET k41 = COALESCE((SELECT SUM(COALESCE(g21, 0)) FROM gr_proj WHERE codkon=i),0) WHERE codkon=i;
+        END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION kv2()
+RETURNS void AS $$
+DECLARE 
+array_str text [] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'];
+i text;
+BEGIN
+    FOREACH i IN ARRAY array_str
+        LOOP
+            UPDATE gr_konk SET k42 = COALESCE((SELECT SUM(COALESCE(g22, 0)) FROM gr_proj WHERE codkon=i),0) WHERE codkon=i;
+        END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION kv3()
+RETURNS void AS $$
+DECLARE 
+array_str text [] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'];
+i text;
+BEGIN
+    FOREACH i IN ARRAY array_str
+        LOOP
+        UPDATE gr_konk SET k43 = COALESCE((SELECT SUM(COALESCE(g23, 0)) FROM gr_proj WHERE codkon=i),0) WHERE codkon=i;
+        END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION kv4()
+RETURNS void AS $$
+DECLARE 
+array_str text [] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17'];
+i text;
+BEGIN
+    FOREACH i IN ARRAY array_str
+        LOOP
+        UPDATE gr_konk SET k44 = COALESCE((SELECT SUM(COALESCE(g24, 0)) FROM gr_proj WHERE codkon=i),0) WHERE codkon=i;
+        END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
+
+connection.execute(text(
+"""
+CREATE OR REPLACE FUNCTION gr_proj_actual_fin()
+RETURNS VOID AS $$
+BEGIN
+    UPDATE gr_proj SET g2 = g21 + g22 + g23 + g24;
+END;
+$$ LANGUAGE plpgsql;
+"""
+))
+
 
 dpg.create_context()
 dpg.create_viewport(title= 'Support of competitions for grants', width = 2200, height = 1200)
@@ -262,6 +370,15 @@ filter_condition = False
 vuz_ex_name = '0'
 konk_ex_name = '0'
 fed_ex_name = '0'
+finance_ex_name = '0'
+finance_items = ['1 квартал','2 квартал','3 квартал','4 квартал']
+finance_id = []
+planned_financing = 1
+actual_financing = 0
+current_int = 0
+current_procent = 0
+
+
 
 def court_to_string(mas, result):
     for row in result:
@@ -1483,6 +1600,210 @@ def filter_condition_window():
             else:
                 dpg.add_text(default_value = 'Состояние фильтра:')
 
+def finance_table_creation(sender,specs):
+    if dpg.does_item_exist('FINANCE_TABLE'):
+        dpg.delete_item('FINANCE_TABLE', children_only = True)
+    result = re.search(r'' + '\d' , specs)
+    if result is None:
+        return
+    specs = result.group(0)
+    result = connection.execute(text("""SELECT ROW_NUMBER() OVER(ORDER BY gr.z2 ASC) ,gr.z2, SUM(gr.g2""" + specs + """)
+                                        FROM gr_konk gk
+                                        INNER JOIN gr_proj gr ON gr.codkon=gk.codkon
+                                        INNER JOIN vuz vz ON gr.codvuz = vz.codvuz
+                                        GROUP BY gr.z2"""))
+    dpg.add_table_column(parent = 'FINANCE_TABLE',label = '№')
+    dpg.add_table_column(parent = 'FINANCE_TABLE',label = 'ВУЗ')
+    dpg.add_table_column(parent = 'FINANCE_TABLE',label = 'Фактическое финансирование')
+    for row in result:
+        with dpg.table_row(parent = 'FINANCE_TABLE'):
+            for j in range(len(row)):
+                    dpg.add_text(f"{row[j]}")
+    result = connection.execute(text("""SELECT '', 'ИТОГО', SUM(gr.g2""" + specs + """)
+                                        FROM gr_konk gk
+                                        INNER JOIN gr_proj gr ON gr.codkon=gk.codkon
+                                        INNER JOIN vuz vz ON gr.codvuz = vz.codvuz"""))
+    for row in result:
+        with dpg.table_row(parent = 'FINANCE_TABLE'):
+            for j in range(len(row)):
+                    dpg.add_text(f"{row[j]}")
+
+
+
+def refresh_actual_financing():
+    result = connection.execute(text("SELECT SUM(gk.k4) FROM gr_konk gk"))
+    add_mas = []
+    court_to_string(add_mas,result)
+    global actual_financing
+    actual_financing = int(add_mas[0])
+    print('Фактическое финансирование: '+ str(actual_financing))
+    add_mas.clear()
+
+def refresh_planned_financing():
+    result = connection.execute(text("SELECT SUM(gk.k12) FROM gr_konk gk"))
+    add_mas = []
+    court_to_string(add_mas,result)
+    global planned_financing
+    planned_financing = int(add_mas[0])
+    print('Планируемое финансирование: '+ str(planned_financing))
+    add_mas.clear()
+
+def correct_procent(sender,specs):
+    global planned_financing
+    procent = 100*specs/planned_financing
+    dpg.set_value(finance_id[2],procent)
+    global current_int
+    global current_procent
+    current_int = specs
+    current_procent = procent
+
+def correct_int(sender,specs):
+    global planned_financing
+    value = specs*planned_financing//100
+    dpg.set_value(finance_id[1],value)
+    global current_int
+    global current_procent
+    current_int = value
+    current_procent = specs
+
+def finance_subwindow():
+    finance_id.clear()
+    refresh_planned_financing()
+    refresh_actual_financing()
+    global planned_financing
+    global actual_financing
+    if dpg.does_item_exist('FINANCE_SUB'):
+        dpg.delete_item('FINANCE_SUB')
+    with dpg.child_window(tag = 'FINANCE_SUB',parent ='FINANCE',pos = (648,34), height = 450, width = 640):
+        dpg.add_text(default_value = 'Плановое финансирование ' + str(planned_financing))
+        dpg.add_text(default_value = 'Выделенное финансирование ' + str(actual_financing) + ' (' + str(round(100*actual_financing/planned_financing,1)) + '% от планового)')
+        dpg.add_combo(width = 250 ,items = finance_items,callback = finance_table_creation)
+        finance_id.append(dpg.last_item())
+        dpg.add_input_int(width = 250, label = 'руб', callback = correct_procent, min_value=0, min_clamped=True, max_value = planned_financing-actual_financing, max_clamped = True)
+        finance_id.append(dpg.last_item())
+        dpg.add_input_float(width = 250, label = '%', callback = correct_int,  min_value=0, min_clamped=True, max_value = 100*((planned_financing-actual_financing)/planned_financing), max_clamped = True)
+        finance_id.append(dpg.last_item())
+
+def enter_finance_callback():
+    result = dpg.get_value(finance_id[0])
+    if result is None:
+        return
+    if result == '1 квартал':
+        column_name = 'g21'
+    elif result == '2 квартал':
+        column_name = 'g22'
+    elif result == '3 квартал':
+        column_name = 'g23'
+    else:
+        column_name = 'g24'
+    result = connection.execute(text("SELECT COUNT(g1) FROM gr_proj"))
+    add_mas = []
+    court_to_string(add_mas, result)
+    nir_number = int(add_mas[0])
+    global current_int
+    portion = int(current_int // nir_number)
+    print(portion)
+    print(column_name)
+    try:
+        result = connection.execute(text("SELECT gr_proj_kv_financing('" + column_name + "'," + str(portion) + ")"))
+        if column_name == 'g21':    
+            result = connection.execute(text("SELECT kv1()"))
+        elif column_name == 'g22':
+            result = connection.execute(text("SELECT kv2()"))
+        elif column_name == 'g23':
+            result = connection.execute(text("SELECT kv3()"))
+        else:
+            result = connection.execute(text("SELECT kv4()"))
+        result = connection.execute(text("SELECT gr_konk_actual_financing()"))
+        result = connection.execute(text("SELECT gr_proj_actual_fin()"))
+    except:
+        print('Ошибка')
+        return
+    result = connection.execute(text("COMMIT"))
+    gr_proj_table_recreation()
+    gr_konk_table_recreation()
+    finance_table_creation(finance_id[0],dpg.get_value(finance_id[0]))
+    finance_subwindow()
+    
+def hide_ex_finance():
+    dpg.hide_item('EX_FINANCE')
+    dpg.delete_item('EX_FINANCE')
+
+def export_finance_callback():
+    kv = dpg.get_value(finance_id[0])
+    if kv is None:
+        return
+    result = re.search(r'' + '\d' , kv)
+    kv = result.group(0)
+    excel_doc = op.Workbook()
+    excel_doc.create_sheet(title = 'Финансирование', index = 0)
+    sheetnames = excel_doc.sheetnames
+    sheet = excel_doc[sheetnames[0]]
+
+    #FINANCE
+    sheet[f'A{1}'] = '№' 
+    sheet[f'B{1}'] = 'ВУЗ'
+    sheet[f'C{1}'] = 'Финансирование за квартал' 
+    i=2
+    result = connection.execute(text("""SELECT ROW_NUMBER() OVER(ORDER BY gr.z2 ASC) ,gr.z2, SUM(gr.g2""" + kv + """)
+                                        FROM gr_konk gk
+                                        INNER JOIN gr_proj gr ON gr.codkon=gk.codkon
+                                        INNER JOIN vuz vz ON gr.codvuz = vz.codvuz
+                                        GROUP BY gr.z2"""))
+
+    for row in result:
+        a,b,c = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+        i+=1
+
+    result = connection.execute(text("""SELECT '', 'ИТОГО', SUM(gr.g2""" + kv + """)
+                                        FROM gr_konk gk
+                                        INNER JOIN gr_proj gr ON gr.codkon=gk.codkon
+                                        INNER JOIN vuz vz ON gr.codvuz = vz.codvuz"""))
+    #TOTAL FINANCE
+    for row in result:
+        a,b,c = row
+        sheet[f'A{i}'] = a 
+        sheet[f'B{i}'] = b 
+        sheet[f'C{i}'] = c 
+
+    global finance_ex_name
+    excel_doc.save('FINANCE_ANALYS_'+ finance_ex_name +'.xlsx')   
+    
+    with dpg.window(tag = 'EX_FINANCE',label = "Формирование документа", width = 500, height = 200, modal = True,on_close = hide_ex_vuz):
+        dpg.add_text("Был сформирован документ 'FINANCE_ANALYS_" + finance_ex_name + ".xlsx' ")
+        finance_ex_name= str(int(finance_ex_name)+1)
+        dpg.add_button(label = "Закрыть", callback = hide_ex_finance)
+
+
+def hide_finance():
+    dpg.hide_item('FINANCE')
+    dpg.delete_item('FINANCE')
+    finance_id.clear()
+    return
+
+def finance_window():
+    if dpg.does_item_exist("FINANCE"):
+        dpg.show_item("FINANCE")
+    else:
+        with dpg.window(tag = "FINANCE", width = 1296, height = 600, label = 'Финансирование'):
+            with dpg.table(parent = 'FINANCE', tag = 'FINANCE_TABLE',height = 450, width = 632, label = 'Финансирование', header_row=True,
+                            borders_innerH=True, borders_outerH=True, borders_innerV=True,
+                            borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
+                            policy = dpg.mvTable_SizingFixedFit, sortable = False):
+                dpg.add_table_column(label = '№')
+                dpg.add_table_column(label = 'ВУЗ')
+                dpg.add_table_column(label = 'Фактическое финансирование')
+            finance_subwindow()
+            with dpg.child_window(parent ='FINANCE', pos = (8,490), width=1280):
+                dpg.add_button(label = "Подтвердить ввод", callback = enter_finance_callback, pos =(128,20), height = 50)
+                dpg.add_button(label = "Экспорт в файл", callback = export_finance_callback, pos =(608,20), height = 50)
+                dpg.add_button(label = "Выход", callback = hide_finance, pos = (848,20), height = 50)
+
+
+
 with dpg.window(tag = 'Main Window', height = 720, width = 1280):
     dpg.set_primary_window("Main Window", True)
     with dpg.viewport_menu_bar():
@@ -1494,6 +1815,8 @@ with dpg.window(tag = 'Main Window', height = 720, width = 1280):
             dpg.add_menu_item(label="Анализ по ВУЗам", callback = ex_viz_vuz)
             dpg.add_menu_item(label="Анализ по конкурсам", callback = ex_viz_konk)
             dpg.add_menu_item(label="Анализ по субъектам фед.", callback = ex_viz_fed)
+        with dpg.menu(label = "Финансирование"):
+            dpg.add_menu_item(label = "Финансирование проектов", callback = finance_window)
         for i in window_specs:
             with dpg.window(tag = i[0], label  = i[0], width = 1200, height = 950, show = False, no_resize = True):
                 dpg.set_item_pos(i[0],(400,50))
@@ -1512,10 +1835,6 @@ with dpg.window(tag = 'Main Window', height = 720, width = 1280):
                             dpg.add_button(label = 'Редактировать', pos = (600,20), width = 200, height = 60, callback = edit_btn)
                             dpg.add_button(label = 'Фильтр', pos = (850,20), width = 200, height = 60, callback = filter_btn)         
     filter_condition_window()
-
-
-
-
 
 dpg.setup_dearpygui()
 dpg.show_viewport()
