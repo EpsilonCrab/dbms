@@ -619,6 +619,7 @@ def delete_callback():
     try:
         connection.execute(text("SELECT delete_row_gr_proj(" + delete_string + ")"))
         dpg.hide_item('EDIT')
+        result = connection.execute(text("SELECT gr_konk_actual_financing()"))
         high_list.clear()
         high_list_copy.clear()
     except:
@@ -627,7 +628,7 @@ def delete_callback():
     connection.execute(text("COMMIT"))
     gr_proj_table_recreation()
     gr_konk_table_recreation()
-
+    
     dpg.hide_item("DELETE")
     dpg.delete_item('F_S')
     global filter_condition
@@ -1684,15 +1685,16 @@ def finance_subwindow():
         dpg.add_text(default_value = 'Выделенное финансирование ' + str(actual_financing) + ' (' + str(round(100*actual_financing/planned_financing,1)) + '% от планового)')
         dpg.add_combo(width = 250 ,items = finance_items,callback = finance_table_creation)
         finance_id.append(dpg.last_item())
-        dpg.add_input_int(width = 250, label = 'руб', callback = correct_procent, min_value=0, min_clamped=True, max_value = planned_financing-actual_financing, max_clamped = True)
+        dpg.add_input_int(width = 250, label = 'руб', callback = correct_procent, min_value=0, min_clamped=True, max_value = planned_financing-actual_financing if planned_financing-actual_financing>0 else 0 , max_clamped = True)
         finance_id.append(dpg.last_item())
-        dpg.add_input_float(width = 250, label = '%', callback = correct_int,  min_value=0, min_clamped=True, max_value = 100*((planned_financing-actual_financing)/planned_financing), max_clamped = True)
+        dpg.add_input_float(width = 250, label = '%', callback = correct_int,  min_value=0, min_clamped=True, max_value = 100*((planned_financing-actual_financing)/planned_financing) if 100*((planned_financing-actual_financing)/planned_financing) > 0 else 0, max_clamped = True)
         finance_id.append(dpg.last_item())
 
 def enter_finance_callback():
     result = dpg.get_value(finance_id[0])
-    if result is None:
+    if result is None or result == '':
         return
+    print(result)
     if result == '1 квартал':
         column_name = 'g21'
     elif result == '2 квартал':
@@ -1701,11 +1703,15 @@ def enter_finance_callback():
         column_name = 'g23'
     else:
         column_name = 'g24'
+    print(column_name)
     result = connection.execute(text("SELECT COUNT(g1) FROM gr_proj"))
     add_mas = []
     court_to_string(add_mas, result)
     nir_number = int(add_mas[0])
     global current_int
+    if current_int == 0 or current_int is None:
+        print('Введите значение')
+        return
     portion = int(current_int // nir_number)
     print(portion)
     print(column_name)
@@ -1729,6 +1735,7 @@ def enter_finance_callback():
     gr_konk_table_recreation()
     finance_table_creation(finance_id[0],dpg.get_value(finance_id[0]))
     finance_subwindow()
+    current_int = 0
     
 def hide_ex_finance():
     dpg.hide_item('EX_FINANCE')
