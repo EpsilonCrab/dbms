@@ -770,6 +770,8 @@ def sort_algo(col_id, s_dir, row, sender):
 
 def sort_callback(sender, sort_specs):
     print(sort_specs)
+    global filter_condition
+    global new_formed_filter_string
     info = info_selection(sender)
     if sort_specs is None: return
     if len(dpg.get_item_label(sort_specs[0][0]))==1: 
@@ -791,8 +793,6 @@ def sort_callback(sender, sort_specs):
                             else:
                                 dpg.add_text(f"{_row[j]}")
         dpg.delete_item('F_S')
-        global filter_condition
-        global new_formed_filter_string
         filter_condition = False
         new_formed_filter_string = ''
         filter_condition_window()
@@ -825,6 +825,10 @@ def sort_callback(sender, sort_specs):
     res_mas.clear()
     column_id.clear()
     direction.clear()
+    dpg.delete_item('F_S')
+    filter_condition = False
+    new_formed_filter_string = ''
+    filter_condition_window()
 
 def gr_konk_viz(sender):
     dpg.show_item('GR_KONK')
@@ -890,8 +894,9 @@ def reset_filter():
 def set_filter_callback(sender):
     if len(new_formed_filter_string)==0:
         return
-    if dpg.is_item_shown('EDIT'):
-        hide_edit()
+    if dpg.does_item_exist('EDIT'):
+        if dpg.is_item_shown('EDIT'):
+            hide_edit()
     
     dpg.delete_item(table_name_id[1][0], children_only=True)
     exec("for _label in " + "GR_PROJ" + "_label_list_ru: dpg.add_table_column(parent = table_name_id[1][0],label=_label)")
@@ -1674,7 +1679,7 @@ def finance_subwindow():
     global actual_financing
     if dpg.does_item_exist('FINANCE_SUB'):
         dpg.delete_item('FINANCE_SUB')
-    with dpg.child_window(tag = 'FINANCE_SUB',parent ='FINANCE',pos = (648,34), height = 450, width = 640):
+    with dpg.child_window(tag = 'FINANCE_SUB',parent ='FINANCE',pos = (8,34), height = 450, width = 640):
         dpg.add_text(default_value = 'Плановое финансирование ' + str(planned_financing))
         dpg.add_text(default_value = 'Выделенное финансирование ' + str(actual_financing) + ' (' + str(round(100*actual_financing/planned_financing,1)) + '% от планового)')
         dpg.add_combo(width = 250 ,items = finance_items,callback = finance_table_creation)
@@ -1734,6 +1739,8 @@ def export_finance_callback():
     if kv is None:
         return
     result = re.search(r'' + '\d' , kv)
+    if result is None:
+        return
     kv = result.group(0)
     excel_doc = op.Workbook()
     excel_doc.create_sheet(title = 'Финансирование', index = 0)
@@ -1789,13 +1796,14 @@ def finance_window():
         dpg.show_item("FINANCE")
     else:
         with dpg.window(tag = "FINANCE", width = 1296, height = 600, label = 'Финансирование'):
-            with dpg.table(parent = 'FINANCE', tag = 'FINANCE_TABLE',height = 450, width = 632, label = 'Финансирование', header_row=True,
-                            borders_innerH=True, borders_outerH=True, borders_innerV=True,
-                            borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
-                            policy = dpg.mvTable_SizingFixedFit, sortable = False):
-                dpg.add_table_column(label = '№')
-                dpg.add_table_column(label = 'ВУЗ')
-                dpg.add_table_column(label = 'Фактическое финансирование')
+            with dpg.child_window(parent ='FINANCE', pos = (648,34), width=1280):
+                with dpg.table( tag = 'FINANCE_TABLE',height = 450, width = 632, label = 'Финансирование', header_row=True,
+                                borders_innerH=True, borders_outerH=True, borders_innerV=True,
+                                borders_outerV=True, resizable = False, scrollX=True, scrollY=True, no_keep_columns_visible=True, 
+                                policy = dpg.mvTable_SizingFixedFit, sortable = False):
+                    dpg.add_table_column(label = '№')
+                    dpg.add_table_column(label = 'ВУЗ')
+                    dpg.add_table_column(label = 'Фактическое финансирование')
             finance_subwindow()
             with dpg.child_window(parent ='FINANCE', pos = (8,490), width=1280):
                 dpg.add_button(label = "Подтвердить ввод", callback = enter_finance_callback, pos =(128,20), height = 50)
