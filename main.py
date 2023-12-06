@@ -1736,6 +1736,7 @@ def enter_finance_callback():
     finance_table_creation(finance_id[0],dpg.get_value(finance_id[0]))
     finance_subwindow()
     current_int = 0
+    current_procent = 0
     
 def hide_ex_finance():
     dpg.hide_item('EX_FINANCE')
